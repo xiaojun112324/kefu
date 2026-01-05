@@ -328,13 +328,13 @@ async function loadHistory() {
       const oldScrollHeight = el.scrollHeight
       const oldScrollTop = el.scrollTop
 
-      // Reverse because backend now returns DESC
-      recs.reverse()
+      // 1. 处理并将 DESC 翻转为 ASC
       const adapted: Msg[] = []
       for (const r of recs) {
         const m = adaptIncoming(r)
         if (m) adapted.push(m)
       }
+      adapted.reverse()
       
       messages.unshift(...adapted)
       msgPage.value = targetPage
@@ -441,8 +441,13 @@ async function fetchNew() {
     })
 
     const recs = Array.isArray(payload?.records) ? payload.records : []
-    // Reverse because backend now returns DESC
-    recs.reverse()
+    // 1. 先把 DESC 处理成 ASC
+    const adapted: Msg[] = []
+    for (const r of recs) {
+      const m = adaptIncoming(r)
+      if (m) adapted.push(m)
+    }
+    adapted.reverse()
 
     if (isInitial) {
       hasMoreMsgs.value = 1 < (payload?.pages || 0)
@@ -460,18 +465,13 @@ async function fetchNew() {
     }
 
     let hasOther = false, appended = false
-    const adapted: Msg[] = []
-    for (const r of recs) {
-      const m = adaptIncoming(r)
-      if (!m) continue
-      adapted.push(m)
-      if (m.from==='other') hasOther = true
-      const idn = Number(r.id); if (!Number.isNaN(idn)) lastId = Math.max(lastId, idn)
-    }
-
     for (const m of adapted) {
       const exist = messages.find(x => (x as any).srvId === (m as any).srvId)
-      if (exist) { exist.status = m.status; continue }
+      if (exist) { 
+        exist.status = m.status
+        if (m.from === 'me' && 'url' in m) (exist as any).url = (m as any).url
+        continue 
+      }
 
       if (m.from === 'me') {
         const pending = messages.find(x =>
@@ -486,13 +486,18 @@ async function fetchNew() {
           continue
         }
       }
-      messages.push(m); appended = true
+      messages.push(m)
+      appended = true
+      if (m.from==='other') hasOther = true
+      const idn = Number((m as any).srvId); if (!Number.isNaN(idn)) lastId = Math.max(lastId, idn)
     }
 
     if (appended) await scrollToBottom()
     revokedCursor = nextCursor
     if (hasOther) playRecv()
-  } catch {}
+  } catch (err) {
+    console.error("fetchNew error:", err)
+  }
 }
 
 /** ======= send text ======= */
