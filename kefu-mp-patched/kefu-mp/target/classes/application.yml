@@ -1,0 +1,27 @@
+
+server:
+  port: 8866
+  forward-headers-strategy: framework
+
+spring:
+  datasource:
+    url: jdbc:mysql://202.95.6.187:3306/kefu_simple?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: kefu_simple
+    password: Fpf6NJ7iGxjY4YyG
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jackson:
+    serialization:
+      WRITE_DATES_AS_TIMESTAMPS: false
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      table-underline: true
+
+jwt:
+  secret: "MWeAZ4uXZHFy27yRv7cheQU24zuY6JUPysvPYCphKvz3jhccScsKQbRddR8z"
+  access-exp-minutes: 480000
+  refresh-exp-days: 1800

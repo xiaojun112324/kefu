@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+  <meta name="theme-color" content="#0a0f1a">
+
+  <meta name="apple-mobile-web-app-title" content="M-MinChat">
+  <meta name="application-name" content="M-MinChat">
+
+  <title>Online Customer Service</title>
+  <meta name="description" content="Online customer service supporting text, voice, emojis, and file sharing across devices, PWA-ready, secured with HTTPS/TLS.">
+  <style>
+    html,body,#app{height:100%}
+    html,body{margin:0;background:#0a0f1a;overflow-x:hidden;color-scheme:dark}
+    :root{ --safe-bottom: env(safe-area-inset-bottom, 0px); }
+    .chat-input{ padding-bottom: calc(10px + var(--safe-bottom)); background:#0a0f1a; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/twemoji.min.js" crossorigin="anonymous"></script>
+</body>
+</html>
