@@ -141,6 +141,17 @@
         @dragleave.prevent="onDragLeave"
         @drop.prevent="onDrop"
       >
+        <!-- 加载历史 Loading -->
+        <div v-if="loadingHistory" class="flex justify-center py-2">
+          <div class="flex items-center gap-2 text-brand-400 text-sm">
+            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>正在加载历史记录...</span>
+          </div>
+        </div>
+
         <!-- 拖拽覆盖层 -->
         <div
           v-if="dragOver"
@@ -481,6 +492,56 @@ let poller = null
 const msgBox = ref(null)
 const stickToBottom = ref(true)
 
+const msgPage = ref(1)
+const hasMoreMsgs = ref(true)
+const loadingHistory = ref(false)
+
+async function loadHistory() {
+  if (!current.value || !hasMoreMsgs.value || loadingHistory.value) return
+  loadingHistory.value = true
+
+  const targetPage = msgPage.value + 1
+  try {
+    const { data } = await api.get('/messages', {
+      params: {
+        conversationId: current.value.id,
+        page: targetPage,
+        size: 50,
+        side: 'CS'
+      }
+    })
+
+    if (data?.code === 0) {
+      const payload = data.data ?? {}
+      const recs = Array.isArray(payload.records)
+        ? payload.records
+        : (Array.isArray(payload) ? payload : [])
+
+      if (recs.length > 0) {
+        const el = msgBox.value
+        const oldScrollHeight = el.scrollHeight
+        const oldScrollTop = el.scrollTop
+
+        const adapted = recs.map(r => ({ ...r, createdAt: normTs(r) })).reverse()
+        msgs.value = [...adapted, ...msgs.value]
+
+        msgPage.value = targetPage
+        hasMoreMsgs.value = targetPage < (payload.pages || 0)
+
+        await nextTick()
+        // 恢复滚动位置：新高度 - 旧高度 + 当前 scrollTop
+        el.scrollTop = (el.scrollHeight - oldScrollHeight) + oldScrollTop
+      } else {
+        hasMoreMsgs.value = false
+      }
+    }
+  } catch (e) {
+    console.error("Load history failed", e)
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
 /** 音效 & Toast */
 const ding = ref(null)
 const showToast = ref(false)
@@ -782,6 +843,9 @@ async function open(c) {
   msgs.value = []
   content.value = ''
   lastId = 0
+  msgPage.value = 1
+  hasMoreMsgs.value = true
+  loadingHistory.value = false
   stickToBottom.value = true
   await nextTick(() => { if (msgBox.value) msgBox.value.scrollTop = 0 })
   resetTextareaHeight();
@@ -793,7 +857,7 @@ async function open(c) {
       params: {
         conversationId: c.id,
         page: 1,
-        size: 200,
+        size: 50,
         side: 'CS',
         // 增量撤回同步：首次可不传（或传0），之后用上次 serverTime
         sinceRevokedAt: revokedSince.value || undefined
@@ -810,6 +874,9 @@ async function open(c) {
       msgs.value = recs.map(r => ({ ...r, createdAt: normTs(r) })).reverse()
       lastId = msgs.value.length ? msgs.value[msgs.value.length - 1].id : 0
 
+      // 是否还有更多历史
+      hasMoreMsgs.value = 1 < (payload.pages || 0)
+
       // 使用 waterline 把我方历史“已发送”改成“已读”
       applyCustomerReadWaterline(payload.customerReadMaxId || 0)
 
@@ -823,10 +890,12 @@ async function open(c) {
     } else {
       msgs.value = []
       lastId = 0
+      hasMoreMsgs.value = false
     }
   } catch (e) {
     msgs.value = []
     lastId = 0
+    hasMoreMsgs.value = false
   }
 
   // 加载客户资料（备注、IP等保持不变）
@@ -1158,7 +1227,14 @@ function isNearBottom(threshold = 80) {
 }
 
 function onMsgScroll() {
+  const el = msgBox.value
+  if (!el) return
   stickToBottom.value = isNearBottom()
+
+  // 触顶加载历史
+  if (el.scrollTop === 0 && hasMoreMsgs.value && !loadingHistory.value) {
+    loadHistory()
+  }
 }
 
 async function scrollToBottom(smooth = true) {

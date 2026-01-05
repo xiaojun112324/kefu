@@ -43,7 +43,7 @@
     </header>
 
     <!-- Messages -->
-    <main class="chat-body" ref="scrollRef" @dragover.prevent @drop.prevent="onDrop">
+    <main class="chat-body" ref="scrollRef" @scroll="onBodyScroll" @dragover.prevent @drop.prevent="onDrop">
       <div class="welcome" v-if="messages.length === 0">
         <img v-if="logo" :src="logo" alt="logo" class="welcome-logo" />
         <div class="welcome-text">
@@ -54,6 +54,12 @@
       </div>
 
       <div v-else class="msg-list" :class="{ compact }">
+        <!-- History Loading Indicator -->
+        <div v-if="loadingHistory" class="loading-top">
+          <div class="spinner"></div>
+          <span>Loading history...</span>
+        </div>
+
         <template v-for="(msg, idx) in messages" :key="msg.id">
           <div v-if="shouldShowTime(idx)" class="time-tag">
             {{ ts(messages[idx].createdAt) }}
@@ -298,6 +304,62 @@ const soundOn = ref(true)
 const compact = ref(false)
 const showSettings = ref(false)
 
+const msgPage = ref(1)
+const hasMoreMsgs = ref(true)
+const loadingHistory = ref(false)
+
+async function loadHistory() {
+  if (!convId.value || !hasMoreMsgs.value || loadingHistory.value) return
+  loadingHistory.value = true
+
+  const targetPage = msgPage.value + 1
+  try {
+    const payload: any = await listMessages({
+      conversationId: convId.value,
+      page: targetPage,
+      size: 50,
+      side: 'USER',
+    })
+
+    const recs = Array.isArray(payload?.records) ? payload.records : []
+    if (recs.length > 0) {
+      const el = scrollRef.value
+      if (!el) return
+      const oldScrollHeight = el.scrollHeight
+      const oldScrollTop = el.scrollTop
+
+      // Reverse because backend now returns DESC
+      recs.reverse()
+      const adapted: Msg[] = []
+      for (const r of recs) {
+        const m = adaptIncoming(r)
+        if (m) adapted.push(m)
+      }
+      
+      messages.unshift(...adapted)
+      msgPage.value = targetPage
+      hasMoreMsgs.value = targetPage < (payload.pages || 0)
+
+      await nextTick()
+      el.scrollTop = (el.scrollHeight - oldScrollHeight) + oldScrollTop
+    } else {
+      hasMoreMsgs.value = false
+    }
+  } catch (e) {
+    console.error("Load history failed", e)
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+function onBodyScroll() {
+  const el = scrollRef.value
+  if (!el) return
+  if (el.scrollTop === 0 && hasMoreMsgs.value && !loadingHistory.value) {
+    loadHistory()
+  }
+}
+
 const placeholder = 'Type a message…'
 const emojis = Array.from('😀😁😂🤣😃😄😅😊😍😘😜🤩🤔🙄😴😭😡🤝👍👎👏🙏🔥')
 const emojiPanelRef = ref<HTMLElement|null>(null)
@@ -369,9 +431,10 @@ async function smoothToBottom(){ await nextTick(); const el=scrollRef.value; if(
 async function fetchNew() {
   try {
     if (!convId.value) return
+    const isInitial = lastId === 0
     const payload:any = await listMessages({
       conversationId: convId.value,
-      size: 100,
+      size: isInitial ? 50 : 100,
       afterId: lastId || undefined,
       side: 'USER',
       sinceRevokedAt: revokedCursor || undefined,
@@ -380,6 +443,10 @@ async function fetchNew() {
     const recs = Array.isArray(payload?.records) ? payload.records : []
     // Reverse because backend now returns DESC
     recs.reverse()
+
+    if (isInitial) {
+      hasMoreMsgs.value = 1 < (payload?.pages || 0)
+    }
 
     const revokedIdsArr = Array.isArray(payload?.revokedIds) ? payload.revokedIds : []
     const nextCursor = Number(payload?.serverTime || Date.now())
@@ -716,11 +783,15 @@ onMounted(async () => {
       await initConversation()
       messages.splice(0, messages.length)
       lastId = 0; revokedCursor = 0
+      msgPage.value = 1
+      hasMoreMsgs.value = true
       await fetchNew()
       await smoothToBottom()
     })
 
     await initConversation()
+    msgPage.value = 1
+    hasMoreMsgs.value = true
     await fetchNew()
     await smoothToBottom()
     pollTimer = window.setInterval(fetchNew, 1200)
@@ -783,6 +854,27 @@ const SvgIcon = (props:{name:string}) => {
 .card.text {
   white-space: pre-wrap;   /* 关键：\n -> 视觉上的换行 */
   word-break: break-word;  /* 长链接/长词可断行 */
+}
+
+.loading-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 0;
+  color: #888;
+  font-size: 13px;
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0,0,0,0.1);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 </style>
